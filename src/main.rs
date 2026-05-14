@@ -1,12 +1,14 @@
 mod app;
 mod config;
 mod error;
+mod forge;
 mod handler;
 mod hash;
 mod input;
 mod model;
 mod output;
 mod persistence;
+mod process;
 mod profile;
 mod syntax;
 mod text_edit;
