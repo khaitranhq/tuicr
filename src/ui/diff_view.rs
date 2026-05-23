@@ -8,12 +8,35 @@ use ratatui::{
 use crate::app::{
     AnnotatedLine, App, DiffViewMode, ExpandDirection, GAP_EXPAND_BATCH, VisualSelection,
 };
-use crate::model::LineSide;
+use crate::model::{Comment, LineSide};
 use crate::theme::Theme;
 use crate::ui::comment_panel;
 use crate::ui::diff_side_by_side::render_side_by_side_diff;
 use crate::ui::diff_unified::render_unified_diff;
 use crate::ui::styles;
+
+/// Static header rule used for file/section headers; avoids `"═".repeat(40)` per frame.
+pub(super) const HEADER_RULE: &str = "════════════════════════════════════════";
+
+/// Shared empty map so we can borrow `line_comments` without cloning per file per frame.
+pub(super) static EMPTY_LINE_COMMENTS: std::sync::LazyLock<
+    std::collections::HashMap<u32, Vec<Comment>>,
+> = std::sync::LazyLock::new(std::collections::HashMap::new);
+
+/// Compute the half-open `line_idx` range whose diff-line spans must be fully
+/// built this frame. Outside this range the hot loops push `Line::default()`
+/// placeholders so the bulk of per-line allocations are skipped.
+///
+/// In Comment mode the scroll offset may still be adjusted after building (to
+/// keep the inline input box visible), so fall back to building everything.
+pub(super) fn diff_visible_range(app: &App, inner: Rect) -> (usize, usize) {
+    if app.input_mode == crate::app::InputMode::Comment {
+        (0, usize::MAX)
+    } else {
+        let start = app.diff_state.scroll_offset;
+        (start, start.saturating_add(inner.height as usize))
+    }
+}
 
 pub(super) fn render_diff_view(frame: &mut Frame, app: &mut App, area: Rect) {
     match app.diff_view_mode {
