@@ -3,7 +3,7 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph, Wrap},
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -1071,25 +1071,10 @@ pub(super) fn render_unified_diff(frame: &mut Frame, app: &mut App, area: Rect) 
 
     let scroll_offset = app.diff_state.scroll_offset;
     let wrap = app.diff_state.wrap_lines;
-    let gutter_width = lw + 4;
-    let wrap_effective_width = if wrap {
-        let content_width = (inner.width as usize).saturating_sub(gutter_width);
-        content_width.max(1)
-    } else {
-        inner.width as usize
-    };
-    let wrap_adjusted_widths: Vec<usize> = if wrap {
-        line_widths
-            .iter()
-            .map(|w| w.saturating_sub(gutter_width))
-            .collect()
-    } else {
-        line_widths.clone()
-    };
     app.diff_state.visible_line_count = populate_row_to_annotation(
         &mut app.diff_row_to_annotation,
-        &wrap_adjusted_widths,
-        wrap_effective_width,
+        &line_widths,
+        inner.width as usize,
         inner.height as usize,
         wrap,
         scroll_offset,
@@ -1106,12 +1091,7 @@ pub(super) fn render_unified_diff(frame: &mut Frame, app: &mut App, area: Rect) 
     let scroll_x = app.diff_state.scroll_x;
     let visible_lines_unscrolled_for_bg = visible_lines_unscrolled.clone();
     let visible_lines: Vec<Line> = if app.diff_state.wrap_lines {
-        crate::ui::word_wrap::expand_wrapped_lines(
-            visible_lines_unscrolled,
-            gutter_width,
-            inner.width as usize,
-            &app.theme,
-        )
+        visible_lines_unscrolled
     } else {
         visible_lines_unscrolled
             .into_iter()
@@ -1124,18 +1104,18 @@ pub(super) fn render_unified_diff(frame: &mut Frame, app: &mut App, area: Rect) 
         frame,
         inner,
         &visible_lines_unscrolled_for_bg,
-        &wrap_adjusted_widths,
+        &line_widths,
         app.diff_state.wrap_lines,
-        wrap_effective_width,
+        inner.width as usize,
         |_idx, line| unified_line_bg_style(line, &app.theme),
     );
 
     let overlay_ctx = crate::ui::diff_view::DiffOverlayPaint {
         inner,
         visible_lines_unscrolled: &visible_lines_unscrolled_for_bg,
-        line_widths: &wrap_adjusted_widths,
+        line_widths: &line_widths,
         wrap_lines: app.diff_state.wrap_lines,
-        viewport_width: wrap_effective_width,
+        viewport_width: inner.width as usize,
         scroll_x,
         scroll_offset: app.diff_state.scroll_offset,
         theme: &app.theme,
@@ -1147,9 +1127,11 @@ pub(super) fn render_unified_diff(frame: &mut Frame, app: &mut App, area: Rect) 
     // on the active row.
     crate::ui::diff_view::paint_section_highlight(frame, &overlay_ctx);
 
-    // Pre-expanded wrap lines are already sized to the viewport; no Ratatui
-    // Wrap needed. Non-wrap mode passes Lines through as-is.
-    let diff = Paragraph::new(visible_lines).style(Style::default().fg(app.theme.fg_primary));
+    // Keep paragraph bg unset so pre-painted per-row diff backgrounds remain visible.
+    let mut diff = Paragraph::new(visible_lines).style(Style::default().fg(app.theme.fg_primary));
+    if app.diff_state.wrap_lines {
+        diff = diff.wrap(Wrap { trim: false });
+    }
     frame.render_widget(diff, inner);
 
     // Cursor-line bg has to land after the paragraph: spans on +/- lines carry
@@ -1159,9 +1141,9 @@ pub(super) fn render_unified_diff(frame: &mut Frame, app: &mut App, area: Rect) 
             frame,
             inner,
             &visible_lines_unscrolled_for_bg,
-            &wrap_adjusted_widths,
+            &line_widths,
             app.diff_state.wrap_lines,
-            wrap_effective_width,
+            inner.width as usize,
             |idx, _line| {
                 is_line_highlighted(app, idx).then(|| Style::default().bg(app.theme.cursor_line_bg))
             },
@@ -1195,15 +1177,19 @@ pub(super) fn render_unified_diff(frame: &mut Frame, app: &mut App, area: Rect) 
 
             // Calculate visual row by summing wrapped line heights
             let mut visual_row: u16 = 0;
+            let viewport_width = inner.width as usize;
 
-            if app.diff_state.wrap_lines && wrap_effective_width > 0 {
+            if app.diff_state.wrap_lines && viewport_width > 0 {
+                // Calculate how many visual rows the lines before cursor take
+                // Note: line_widths is indexed from 0 and corresponds to visible lines
+                // (i.e., line_widths[0] is the first visible line after scroll)
                 for i in 0..logical_offset {
-                    if i < wrap_adjusted_widths.len() {
-                        let width = wrap_adjusted_widths[i];
+                    if i < line_widths.len() {
+                        let width = line_widths[i];
                         let rows = if width == 0 {
                             1
                         } else {
-                            width.div_ceil(wrap_effective_width)
+                            width.div_ceil(viewport_width)
                         };
                         visual_row += rows as u16;
                     } else {
