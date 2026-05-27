@@ -450,6 +450,21 @@ mod tests {
     }
 
     #[test]
+    fn should_leave_lowercase_e_unbound_in_normal_mode() {
+        let action = map_normal_mode(key(KeyCode::Char('e')), DEFAULT_LEADER_KEY);
+        assert_eq!(action, Action::None);
+    }
+
+    #[test]
+    fn should_keep_ctrl_e_as_scroll_down_in_normal_mode() {
+        let action = map_normal_mode(
+            KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL),
+            DEFAULT_LEADER_KEY,
+        );
+        assert_eq!(action, Action::ScrollViewDown(1));
+    }
+
+    #[test]
     fn should_not_map_digits_in_command_mode() {
         for d in 0..=9u8 {
             let c = (b'0' + d) as char;

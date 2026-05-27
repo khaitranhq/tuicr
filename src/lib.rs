@@ -1,6 +1,7 @@
 pub mod app;
 pub mod cli;
 pub mod config;
+pub mod editor;
 pub mod error;
 pub mod forge;
 pub mod handler;
@@ -15,6 +16,7 @@ pub mod review_cli;
 pub mod review_store;
 pub mod slug;
 pub mod syntax;
+pub mod terminal_state;
 pub mod text_edit;
 pub mod theme;
 pub mod tuicrignore;

@@ -26,6 +26,7 @@ const COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec::new(&["w", "write"], CommandKind::Write),
     CommandSpec::new(&["x", "wq"], CommandKind::WriteQuit),
     CommandSpec::new(&["e", "reload"], CommandKind::Reload),
+    CommandSpec::new(&["edit"], CommandKind::Edit),
     CommandSpec::new(&["clip", "export"], CommandKind::Export),
     CommandSpec::new(
         &["clear"],
@@ -99,6 +100,7 @@ enum CommandKind {
     Write,
     WriteQuit,
     Reload,
+    Edit,
     Export,
     Clear(ClearScope),
     Version,
@@ -727,6 +729,10 @@ fn dispatch_command(app: &mut App, kind: CommandKind) -> CommandAfterDispatch {
         }
         CommandKind::Reload => {
             reload_review(app);
+            CommandAfterDispatch::ExitCommandMode
+        }
+        CommandKind::Edit => {
+            app.queue_editor_for_focused_item();
             CommandAfterDispatch::ExitCommandMode
         }
         CommandKind::Export => {

@@ -219,6 +219,7 @@ A first-session cheatsheet. Press `?` inside tuicr for the full reference.
 | `v` / `V` | Visual mode (range comment) |
 | `r` | Toggle file reviewed |
 | `y` | Copy review to clipboard |
+| `:edit` | Open focused file in `$EDITOR` |
 | `:submit` | Push review to GitHub |
 | `Tab` in `:` prompt | Complete or cycle commands |
 | `?` | Toggle full help |

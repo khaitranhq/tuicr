@@ -101,6 +101,7 @@ In command mode,
 | `:o{N}` | Jump to old-side line N in current file (matches deletions) |
 | `:w` | Save session |
 | `:e` (`:reload`) | Reload diff files |
+| `:edit` | Open focused file in `$EDITOR` |
 | `:clip` (`:export`) | Copy review to clipboard |
 | `:diff` | Toggle diff view (unified / side-by-side) |
 | `:commits` | Select commits to review |

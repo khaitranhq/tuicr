@@ -547,6 +547,13 @@ pub fn render_help(frame: &mut Frame, app: &mut App) {
         ]),
         Line::from(vec![
             Span::styled(
+                "  :edit     ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Open focused file in $EDITOR"),
+        ]),
+        Line::from(vec![
+            Span::styled(
                 "  :clip     ",
                 Style::default().add_modifier(Modifier::BOLD),
             ),
