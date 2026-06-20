@@ -417,6 +417,25 @@ impl VcsBackend for GitCliBackend {
 
         Ok(())
     }
+
+    fn unstage_file(&self, path: &Path) -> Result<()> {
+        let output = Command::new("git")
+            .current_dir(&self.root_path)
+            .arg("restore")
+            .arg("--staged")
+            .arg("--")
+            .arg(path)
+            .output()
+            .map_err(|e| TuicrError::VcsCommand(format!("Failed to run git: {e}")))?;
+
+        if !output.status.success() {
+            return Err(TuicrError::VcsCommand(
+                String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 fn strings<const N: usize>(args: [&str; N]) -> Vec<String> {

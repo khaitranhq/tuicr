@@ -142,11 +142,26 @@ pub(super) fn render_file_list(frame: &mut Frame, app: &mut App, area: Rect) {
                         // badge would lie. Suppress it and leave the row as
                         // checkbox + filename.
                         if !app.is_pristine_mode {
-                            let status = file.status.as_char();
-                            spans.push(Span::styled(
-                                format!("{status} "),
-                                styles::file_status_style(&app.theme, status),
-                            ));
+                            // Show staged/unstaged indicator when available
+                            if matches!(app.diff_source, crate::app::DiffSource::StagedAndUnstaged)
+                            {
+                                let is_staged = app.staged_paths.contains(path);
+                                // ponytail: triangle direction matches the metaphor
+                                // (up = into index, down = working tree).
+                                let stage_glyph = if is_staged { "▲" } else { "▼" };
+                                let stage_style = if is_staged {
+                                    styles::staged_style(&app.theme)
+                                } else {
+                                    styles::unstaged_style(&app.theme)
+                                };
+                                spans.push(Span::styled(format!("{stage_glyph} "), stage_style));
+                            } else {
+                                let status = file.status.as_char();
+                                spans.push(Span::styled(
+                                    format!("{status} "),
+                                    styles::file_status_style(&app.theme, status),
+                                ));
+                            }
                         }
                         spans.push(Span::raw(filename.to_string()));
                         Line::from(spans)

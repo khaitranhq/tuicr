@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use crate::app::{STAGED_SELECTION_ID, UNSTAGED_SELECTION_ID};
+use crate::app::WORKTREE_SELECTION_ID;
 use crate::theme::Theme;
 use crate::ui::styles;
 use crate::ui::text_utils::{truncate_or_pad, truncate_str};
@@ -73,12 +73,8 @@ pub fn render_commit_row<'a>(spec: &CommitRowSpec<'a>) -> Line<'a> {
         },
     ));
 
-    if spec.commit.id == STAGED_SELECTION_ID || spec.commit.id == UNSTAGED_SELECTION_ID {
-        let tag = if spec.commit.id == STAGED_SELECTION_ID {
-            " \u{00b7} staged \u{00b7}   "
-        } else {
-            " \u{00b7} unstaged \u{00b7} "
-        };
+    if spec.commit.id == WORKTREE_SELECTION_ID {
+        let tag = " \u{00b7} working tree \u{00b7} ";
         spans.push(Span::styled(tag, styles::pseudo_commit_tag_style(theme)));
         spans.push(Span::styled(spec.commit.summary.clone(), row_text_style));
         return Line::from(spans);
@@ -231,7 +227,7 @@ mod tests {
     fn should_render_pseudo_commit_with_tag_and_drop_metadata() {
         // given
         let theme = Theme::dark();
-        let c = commit(STAGED_SELECTION_ID, "Staged changes", None);
+        let c = commit(WORKTREE_SELECTION_ID, "Working tree changes", None);
         // when
         let line = render_commit_row(&CommitRowSpec {
             commit: &c,
@@ -241,8 +237,8 @@ mod tests {
         });
         // then
         let text = line_text(&line);
-        assert!(text.contains("staged"), "got: {text:?}");
-        assert!(text.contains("Staged changes"), "got: {text:?}");
+        assert!(text.contains("working tree"), "got: {text:?}");
+        assert!(text.contains("Working tree changes"), "got: {text:?}");
         assert!(!text.contains("alice"), "should drop author: {text:?}");
     }
 
