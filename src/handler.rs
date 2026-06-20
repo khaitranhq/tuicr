@@ -1271,6 +1271,13 @@ pub fn handle_file_list_action(app: &mut App, action: Action) {
                 app.set_warning("Select a file to toggle reviewed");
             }
         }
+        Action::StageFile => {
+            if let Some(FileTreeItem::File { file_idx, .. }) = app.get_selected_tree_item() {
+                app.toggle_file_stage(file_idx);
+            } else {
+                app.set_warning("Select a file to stage/unstage");
+            }
+        }
         _ => handle_shared_normal_action(app, action),
     }
 }
@@ -1392,6 +1399,10 @@ fn handle_shared_normal_action(app: &mut App, action: Action) {
         Action::PrevHunk => app.prev_hunk(),
         Action::ToggleReviewed => app.toggle_reviewed(),
         Action::ToggleHunkReviewed => app.toggle_hunk_reviewed(),
+        Action::StageFile => {
+            let file_idx = app.diff_state.current_file_idx;
+            app.toggle_file_stage(file_idx);
+        }
         Action::ToggleFocus => {
             let has_selector = app.has_inline_commit_selector();
             let has_comments = app.has_comment_navigator_items();
