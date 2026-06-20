@@ -331,6 +331,13 @@ pub fn render_help(frame: &mut Frame, app: &mut App) {
             ),
             Span::raw("Collapse all directories"),
         ]),
+        Line::from(vec![
+            Span::styled(
+                "  s         ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Stage/unstage file (working tree view)"),
+        ]),
         Line::from(""),
         Line::from(Span::styled(
             "Comment Navigator",

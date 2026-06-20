@@ -86,6 +86,14 @@ pub fn file_status_style(theme: &Theme, status: char) -> Style {
     Style::default().fg(color)
 }
 
+pub fn staged_style(theme: &Theme) -> Style {
+    Style::default().fg(theme.diff_add)
+}
+
+pub fn unstaged_style(theme: &Theme) -> Style {
+    Style::default().fg(theme.diff_del)
+}
+
 pub fn current_line_indicator_style(theme: &Theme) -> Style {
     Style::default().fg(theme.border_focused)
 }
