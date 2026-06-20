@@ -130,6 +130,9 @@ pub enum Action {
     CollapseAll,
     SelectFileFull,
 
+    // Staging
+    StageFile,
+
     // No-op
     None,
 }
@@ -193,6 +196,7 @@ fn map_normal_mode(key: KeyEvent, leader_key: char) -> Action {
         // Review actions
         (KeyCode::Char('r'), KeyModifiers::NONE) => Action::ToggleReviewed,
         (KeyCode::Char('R'), _) => Action::ToggleHunkReviewed,
+        (KeyCode::Char('s'), KeyModifiers::NONE) => Action::StageFile,
         (KeyCode::Char('c'), KeyModifiers::NONE) => Action::AddLineComment,
         (KeyCode::Char('C'), _) => Action::AddFileComment,
         (KeyCode::Char('i'), KeyModifiers::NONE) => Action::EditComment,

@@ -280,6 +280,13 @@ pub trait VcsBackend: Send {
             "Staging not supported for this VCS".into(),
         ))
     }
+
+    /// Unstage a file (remove from index, keeping working tree changes).
+    fn unstage_file(&self, _path: &Path) -> Result<()> {
+        Err(crate::error::TuicrError::UnsupportedOperation(
+            "Unstaging not supported for this VCS".into(),
+        ))
+    }
 }
 
 #[cfg(test)]
