@@ -4104,6 +4104,7 @@ impl App {
         if let Some(review) = self.session.get_file_mut(&path) {
             review.reviewed = !review.reviewed;
             self.dirty = true;
+            let _ = self.save_current_session_merging_external();
 
             // Update current_file_idx before rebuilding annotations:
             // single-file view filters annotations against it.
@@ -4232,6 +4233,7 @@ impl App {
 
         let reviewed = review.toggle_hunk_reviewed(key);
         self.dirty = true;
+        let _ = self.save_current_session_merging_external();
         self.rebuild_annotations();
         self.diff_state.current_file_idx = file_idx;
         if let Some(tree_idx) = self.file_idx_to_tree_idx(file_idx) {
@@ -15361,5 +15363,63 @@ mod single_file_view_tests {
         assert_eq!(app.effective_file_height(1, other), 0);
         let current = &app.diff_files[0].clone();
         assert!(app.effective_file_height(0, current) > 0);
+    }
+
+    #[test]
+    fn should_persist_reviewed_status_through_toggle_and_reload() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo_path = dir.path().join("repo");
+        fs::create_dir_all(&repo_path).expect("create repo dir");
+
+        let file_path = "src/main.rs";
+        let mut app = app_with_root(repo_path, vec![file(file_path, vec![hunk(1, 3)])]);
+
+        // Toggle reviewed on the file
+        app.toggle_reviewed();
+
+        // Verify session has it recorded
+        let pb = PathBuf::from(file_path);
+        assert!(app.session.is_file_reviewed(&pb));
+
+        // Verify session was saved to a path
+        let session_path = app.session_path.clone().expect("session_path set");
+        assert!(session_path.exists());
+
+        // Load back from disk
+        let loaded = crate::persistence::storage::load_session(&session_path)
+            .expect("load session");
+        assert!(loaded.is_file_reviewed(&pb),
+            "reviewed status must survive app save + disk load");
+    }
+
+    #[test]
+    fn should_persist_hunk_reviewed_through_toggle_and_reload() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo_path = dir.path().join("repo");
+        fs::create_dir_all(&repo_path).expect("create repo dir");
+
+        let file_path = "src/main.rs";
+        let mut app = app_with_root(
+            repo_path,
+            vec![file(file_path, vec![hunk(1, 3)])],
+        );
+
+        // Navigate cursor to hunk header then toggle
+        app.diff_state.cursor_line = app.hunk_header_line(0, 0).expect("missing hunk header");
+        app.toggle_hunk_reviewed();
+
+        let pb = PathBuf::from(file_path);
+        let key = app.diff_files[0].hunk_review_key(0).unwrap();
+        assert!(app.session.is_hunk_reviewed(&pb, &key));
+
+        // Verify session was saved
+        let session_path = app.session_path.clone().expect("session_path set");
+        assert!(session_path.exists());
+
+        // Load back from disk
+        let loaded = crate::persistence::storage::load_session(&session_path)
+            .expect("load session");
+        assert!(loaded.is_hunk_reviewed(&pb, &key),
+            "hunk reviewed status must survive app save + disk load");
     }
 }
