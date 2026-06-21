@@ -895,6 +895,76 @@ mod tests {
     }
 
     #[test]
+    fn should_roundtrip_reviewed_status() {
+        let _g = with_test_reviews_dir();
+        let repo = make_repo();
+        let mut session = make_local_session(
+            repo.clone(),
+            "abc1234",
+            Some("main"),
+            SessionDiffSource::WorkingTree,
+            None,
+        );
+        // Mark file reviewed
+        let path_buf = PathBuf::from("src/main.rs");
+        session.get_file_mut(&path_buf).unwrap().reviewed = true;
+
+        let path = save_session(&session).unwrap();
+        let loaded = load_session(&path).unwrap();
+
+        let file = loaded.files.get(&path_buf).expect("file should exist");
+        assert!(file.reviewed, "reviewed status must survive save/load roundtrip");
+    }
+
+    #[test]
+    fn should_roundtrip_reviewed_hunk_status() {
+        let _g = with_test_reviews_dir();
+        let repo = make_repo();
+        let mut session = make_local_session(
+            repo.clone(),
+            "abc1234",
+            Some("main"),
+            SessionDiffSource::WorkingTree,
+            None,
+        );
+        let path_buf = PathBuf::from("src/main.rs");
+        let key = "@@ -1,1 +1,1 @@".to_string();
+        session.get_file_mut(&path_buf).unwrap().reviewed_hunks.insert(key.clone());
+
+        let path = save_session(&session).unwrap();
+        let loaded = load_session(&path).unwrap();
+
+        let file = loaded.files.get(&path_buf).expect("file should exist");
+        assert!(file.reviewed_hunks.contains(&key), "reviewed hunk status must survive save/load roundtrip");
+    }
+
+    #[test]
+    fn should_roundtrip_reviewed_status_add_file_preserves_when_hash_matches() {
+        let _g = with_test_reviews_dir();
+        let repo = make_repo();
+        let mut session = ReviewSession::new(
+            repo.clone(),
+            "abc1234".to_string(),
+            Some("main".to_string()),
+            SessionDiffSource::WorkingTree,
+        );
+        let path_buf = PathBuf::from("src/main.rs");
+        session.add_file(path_buf.clone(), FileStatus::Modified, 42);
+        session.get_file_mut(&path_buf).unwrap().reviewed = true;
+
+        // Save the reviewed session
+        let path = save_session(&session).unwrap();
+
+        // Simulate the reload path used by App::register_diff_files:
+        // load the saved session, then call add_file with same content hash
+        let mut loaded = load_session(&path).unwrap();
+        loaded.add_file(path_buf.clone(), FileStatus::Modified, 42);
+
+        assert!(loaded.is_file_reviewed(&path_buf),
+            "reviewed must survive add_file when content hash matches");
+    }
+
+    #[test]
     fn should_delete_empty_session_and_manifest_entry() {
         let _g = with_test_reviews_dir();
         let repo = make_repo();
