@@ -207,6 +207,10 @@ impl VcsBackend for Libgit2Backend {
     fn stage_file(&self, path: &Path) -> Result<()> {
         staging::stage_file(&self.repo, path)
     }
+
+    fn unstage_file(&self, path: &Path) -> Result<()> {
+        staging::unstage_file(&self.repo, path)
+    }
 }
 
 #[cfg(test)]

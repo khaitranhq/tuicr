@@ -32,6 +32,7 @@ const COMMIT_PAGE_SIZE: usize = 10;
 pub const DEFAULT_REVIEW_WATCH_INTERVAL_MS: u64 = 1000;
 pub const STAGED_SELECTION_ID: &str = "__tuicr_staged__";
 pub const UNSTAGED_SELECTION_ID: &str = "__tuicr_unstaged__";
+pub const WORKTREE_SELECTION_ID: &str = "__tuicr_worktree__";
 pub const GAP_EXPAND_BATCH: usize = 20;
 
 /// Create a forge backend for the given repository.
@@ -949,6 +950,7 @@ pub struct App {
     pub next_review_watch_at: Instant,
     pub(crate) ephemeral_session_paths: HashSet<PathBuf>,
     pub diff_files: Vec<DiffFile>,
+    pub staged_paths: HashSet<PathBuf>,
     pub diff_source: DiffSource,
     pub pending_editor_target: Option<EditorTarget>,
 
@@ -1561,11 +1563,8 @@ impl App {
                     options.path_filter,
                 )?;
                 let mut all_commits = Vec::new();
-                if change_status.staged {
-                    all_commits.push(Self::staged_commit_entry());
-                }
-                if change_status.unstaged {
-                    all_commits.push(Self::unstaged_commit_entry());
+                if change_status.staged || change_status.unstaged {
+                    all_commits.push(Self::worktree_commit_entry());
                 }
                 all_commits.extend(review_commits);
 
@@ -1710,11 +1709,8 @@ impl App {
             }
 
             let mut commit_list = commits.clone();
-            if has_staged_changes {
-                commit_list.insert(0, Self::staged_commit_entry());
-            }
-            if has_unstaged_changes {
-                commit_list.insert(0, Self::unstaged_commit_entry());
+            if has_staged_changes || has_unstaged_changes {
+                commit_list.insert(0, Self::worktree_commit_entry());
             }
 
             let diff_source = if has_staged_changes && has_unstaged_changes {
@@ -1816,6 +1812,7 @@ impl App {
                 + Duration::from_millis(DEFAULT_REVIEW_WATCH_INTERVAL_MS),
             ephemeral_session_paths: HashSet::new(),
             diff_files,
+            staged_paths: HashSet::new(),
             diff_source,
             pending_editor_target: None,
             input_mode,
@@ -3400,24 +3397,12 @@ impl App {
         Ok(head_changed)
     }
 
-    fn staged_commit_entry() -> CommitInfo {
+    fn worktree_commit_entry() -> CommitInfo {
         CommitInfo {
-            id: STAGED_SELECTION_ID.to_string(),
-            short_id: "STAGED".to_string(),
+            id: WORKTREE_SELECTION_ID.to_string(),
+            short_id: "WORKTREE".to_string(),
             branch_name: None,
-            summary: "Staged changes".to_string(),
-            body: None,
-            author: String::new(),
-            time: Utc::now(),
-        }
-    }
-
-    fn unstaged_commit_entry() -> CommitInfo {
-        CommitInfo {
-            id: UNSTAGED_SELECTION_ID.to_string(),
-            short_id: "UNSTAGED".to_string(),
-            branch_name: None,
-            summary: "Unstaged changes".to_string(),
+            summary: "Working tree changes".to_string(),
             body: None,
             author: String::new(),
             time: Utc::now(),
@@ -3495,16 +3480,12 @@ impl App {
         self.session.add_diff_file(&self.diff_files[0]);
     }
 
-    fn is_staged_commit(commit: &CommitInfo) -> bool {
-        commit.id == STAGED_SELECTION_ID
-    }
-
-    fn is_unstaged_commit(commit: &CommitInfo) -> bool {
-        commit.id == UNSTAGED_SELECTION_ID
+    fn is_worktree_commit(commit: &CommitInfo) -> bool {
+        commit.id == WORKTREE_SELECTION_ID
     }
 
     fn is_special_commit(commit: &CommitInfo) -> bool {
-        Self::is_staged_commit(commit) || Self::is_unstaged_commit(commit)
+        Self::is_worktree_commit(commit)
     }
 
     fn special_commit_count(&self) -> usize {
@@ -3819,76 +3800,12 @@ impl App {
 
         self.diff_files = diff_files;
         self.diff_source = DiffSource::StagedAndUnstaged;
-        self.input_mode = InputMode::Normal;
-        self.diff_state = DiffState::default();
-        self.file_list_state = FileListState::default();
-        self.clear_expanded_gaps();
-        self.sort_files_by_directory(true);
-        self.expand_all_dirs();
-        self.rebuild_annotations();
 
-        Ok(())
-    }
-
-    fn load_staged_selection(&mut self) -> Result<()> {
-        let highlighter = self.theme.syntax_highlighter();
-        let diff_files = match Self::get_staged_diff_with_ignore(
-            self.vcs.as_ref(),
-            &self.vcs_info.root_path,
-            highlighter,
-            self.path_filter.as_deref(),
-        ) {
-            Ok(diff_files) => diff_files,
-            Err(TuicrError::NoChanges) => {
-                self.set_message("No staged changes");
-                return Ok(());
-            }
-            Err(e) => return Err(e),
-        };
-
-        self.session = Self::load_or_create_session(&self.vcs_info, SessionDiffSource::Staged);
-        for file in &diff_files {
-            self.session.add_diff_file(file);
+        // Track which files are staged for file tree display
+        if let Ok(paths) = self.vcs.list_changed_paths(ChangeKind::Staged) {
+            self.staged_paths = paths.into_iter().collect();
         }
-        self.reset_persisted_session_tracking();
 
-        self.diff_files = diff_files;
-        self.diff_source = DiffSource::Staged;
-        self.input_mode = InputMode::Normal;
-        self.diff_state = DiffState::default();
-        self.file_list_state = FileListState::default();
-        self.clear_expanded_gaps();
-        self.sort_files_by_directory(true);
-        self.expand_all_dirs();
-        self.rebuild_annotations();
-
-        Ok(())
-    }
-
-    fn load_unstaged_selection(&mut self) -> Result<()> {
-        let highlighter = self.theme.syntax_highlighter();
-        let diff_files = match Self::get_unstaged_diff_with_ignore(
-            self.vcs.as_ref(),
-            &self.vcs_info.root_path,
-            highlighter,
-            self.path_filter.as_deref(),
-        ) {
-            Ok(diff_files) => diff_files,
-            Err(TuicrError::NoChanges) => {
-                self.set_message("No unstaged changes");
-                return Ok(());
-            }
-            Err(e) => return Err(e),
-        };
-
-        self.session = Self::load_or_create_session(&self.vcs_info, SessionDiffSource::Unstaged);
-        for file in &diff_files {
-            self.session.add_diff_file(file);
-        }
-        self.reset_persisted_session_tracking();
-
-        self.diff_files = diff_files;
-        self.diff_source = DiffSource::Unstaged;
         self.input_mode = InputMode::Normal;
         self.diff_state = DiffState::default();
         self.file_list_state = FileListState::default();
@@ -3975,6 +3892,14 @@ impl App {
         }
 
         self.diff_files = diff_files;
+
+        // Repopulate staged path tracking for working-tree diffs
+        if matches!(self.diff_source, DiffSource::StagedAndUnstaged) {
+            if let Ok(paths) = self.vcs.list_changed_paths(ChangeKind::Staged) {
+                self.staged_paths = paths.into_iter().collect();
+            }
+        }
+
         self.clear_expanded_gaps();
 
         self.sort_files_by_directory(false);
@@ -4192,6 +4117,46 @@ impl App {
                 self.diff_state.cursor_line = header_line;
                 self.ensure_cursor_visible();
             }
+        }
+    }
+
+    pub fn toggle_file_stage(&mut self, file_idx: usize) {
+        if !matches!(self.diff_source, DiffSource::StagedAndUnstaged) {
+            self.set_warning("Staging only available when viewing working tree changes");
+            return;
+        }
+        let Some(path) = self
+            .diff_files
+            .get(file_idx)
+            .map(|f| f.display_path().clone())
+        else {
+            return;
+        };
+        let path_for_msg = path.clone();
+        let was_staged = self.staged_paths.contains(&path);
+        let result = if was_staged {
+            self.vcs.unstage_file(&path)
+        } else {
+            self.vcs.stage_file(&path)
+        };
+        match result {
+            Ok(()) => {
+                // Refresh staged_paths from VCS rather than a local toggle,
+                // so we stay consistent with git when path normalization
+                // differs.
+                if let Ok(paths) = self.vcs.list_changed_paths(ChangeKind::Staged) {
+                    self.staged_paths = paths.into_iter().collect();
+                }
+                // Stage → reviewed (change is ready). Unstage → unreviewed
+                // (back to the drawing board).
+                if let Some(review) = self.session.get_file_mut(&path) {
+                    review.reviewed = !was_staged;
+                    self.dirty = true;
+                }
+                let verb = if was_staged { "Unstaged" } else { "Staged" };
+                self.set_message(format!("{verb}: {}", path_for_msg.display()));
+            }
+            Err(e) => self.set_error(format!("Failed to stage/unstage: {e}")),
         }
     }
 
@@ -7560,11 +7525,8 @@ impl App {
         // Check if there might be more commits
         self.has_more_commit = commits.len() >= VISIBLE_COMMIT_COUNT;
         self.commit_list = commits;
-        if has_staged_changes {
-            self.commit_list.insert(0, Self::staged_commit_entry());
-        }
-        if has_unstaged_changes {
-            self.commit_list.insert(0, Self::unstaged_commit_entry());
+        if has_staged_changes || has_unstaged_changes {
+            self.commit_list.insert(0, Self::worktree_commit_entry());
         }
         self.commit_list_cursor = 0;
         self.commit_list_scroll_offset = 0;
@@ -8524,28 +8486,19 @@ impl App {
             return Ok(());
         }
 
-        let selected_staged = selected_commits.iter().any(Self::is_staged_commit);
-        let selected_unstaged = selected_commits.iter().any(Self::is_unstaged_commit);
+        let selected_worktree = selected_commits.iter().any(Self::is_worktree_commit);
         let selected_ids: Vec<String> = selected_commits
             .iter()
             .filter(|c| !Self::is_special_commit(c))
             .map(|c| c.id.clone())
             .collect();
 
-        if (selected_staged || selected_unstaged) && !selected_ids.is_empty() {
+        if selected_worktree && !selected_ids.is_empty() {
             return self.load_staged_unstaged_and_commits_selection(selected_ids, selected_commits);
         }
 
-        if selected_staged && selected_unstaged {
+        if selected_worktree {
             return self.load_staged_and_unstaged_selection();
-        }
-
-        if selected_staged {
-            return self.load_staged_selection();
-        }
-
-        if selected_unstaged {
-            return self.load_unstaged_selection();
         }
 
         // Get the diff for the selected commits
@@ -8675,15 +8628,10 @@ impl App {
         }
 
         // Load diff for selected subrange
-        let has_staged = (start..=end).any(|i| {
+        let has_worktree = (start..=end).any(|i| {
             self.review_commits
                 .get(i)
-                .is_some_and(Self::is_staged_commit)
-        });
-        let has_unstaged = (start..=end).any(|i| {
-            self.review_commits
-                .get(i)
-                .is_some_and(Self::is_unstaged_commit)
+                .is_some_and(Self::is_worktree_commit)
         });
         let selected_ids: Vec<String> = (start..=end)
             .rev() // oldest to newest
@@ -8693,7 +8641,7 @@ impl App {
             .collect();
 
         let highlighter = self.theme.syntax_highlighter();
-        let diff_files = if (has_staged || has_unstaged) && !selected_ids.is_empty() {
+        let diff_files = if has_worktree && !selected_ids.is_empty() {
             match Self::get_working_tree_with_commits_diff_with_ignore(
                 self.vcs.as_ref(),
                 &self.vcs_info.root_path,
@@ -8705,30 +8653,8 @@ impl App {
                 Err(TuicrError::NoChanges) => Vec::new(),
                 Err(e) => return Err(e),
             }
-        } else if has_staged && has_unstaged {
+        } else if has_worktree {
             match Self::get_working_tree_diff_with_ignore(
-                self.vcs.as_ref(),
-                &self.vcs_info.root_path,
-                highlighter,
-                self.path_filter.as_deref(),
-            ) {
-                Ok(files) => files,
-                Err(TuicrError::NoChanges) => Vec::new(),
-                Err(e) => return Err(e),
-            }
-        } else if has_staged {
-            match Self::get_staged_diff_with_ignore(
-                self.vcs.as_ref(),
-                &self.vcs_info.root_path,
-                highlighter,
-                self.path_filter.as_deref(),
-            ) {
-                Ok(files) => files,
-                Err(TuicrError::NoChanges) => Vec::new(),
-                Err(e) => return Err(e),
-            }
-        } else if has_unstaged {
-            match Self::get_unstaged_diff_with_ignore(
                 self.vcs.as_ref(),
                 &self.vcs_info.root_path,
                 highlighter,
@@ -10274,18 +10200,14 @@ mod commit_selection_tests {
 
     #[test]
     fn special_commit_count_counts_leading_special_entries() {
-        let app = build_app(vec![
-            App::staged_commit_entry(),
-            App::unstaged_commit_entry(),
-            normal_commit("abc123"),
-        ]);
+        let app = build_app(vec![App::worktree_commit_entry(), normal_commit("abc123")]);
 
-        assert_eq!(app.special_commit_count(), 2);
+        assert_eq!(app.special_commit_count(), 1);
     }
 
     #[test]
     fn special_commit_count_ignores_non_leading_special_entries() {
-        let app = build_app(vec![normal_commit("abc123"), App::staged_commit_entry()]);
+        let app = build_app(vec![normal_commit("abc123"), App::worktree_commit_entry()]);
 
         assert_eq!(app.special_commit_count(), 0);
     }
