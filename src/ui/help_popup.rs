@@ -415,6 +415,13 @@ pub fn render_help(frame: &mut Frame, app: &mut App) {
         ]),
         Line::from(vec![
             Span::styled(
+                "  x         ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Toggle resolve comment at cursor"),
+        ]),
+        Line::from(vec![
+            Span::styled(
                 "  dd        ",
                 Style::default().add_modifier(Modifier::BOLD),
             ),

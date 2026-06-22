@@ -133,6 +133,8 @@ pub enum Action {
     // Staging
     StageFile,
 
+    // Resolve
+    ToggleCommentResolved,
     // No-op
     None,
 }
@@ -205,6 +207,7 @@ fn map_normal_mode(key: KeyEvent, leader_key: char) -> Action {
         (KeyCode::Char('y'), KeyModifiers::NONE) => Action::ExportToClipboard,
         (KeyCode::Char('n'), KeyModifiers::NONE) => Action::SearchNext,
         (KeyCode::Char('N'), _) => Action::SearchPrev,
+        (KeyCode::Char('x'), KeyModifiers::NONE) => Action::ToggleCommentResolved,
 
         // Mode changes (use _ for shifted characters like : and ?)
         (KeyCode::Char(':'), _) => Action::EnterCommandMode,

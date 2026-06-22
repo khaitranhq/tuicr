@@ -364,6 +364,7 @@ pub fn format_comment_lines(
     line_range: Option<LineRange>,
     width: usize,
     author: Option<&str>,
+    resolved: bool,
 ) -> Vec<Line<'static>> {
     let type_style = styles::comment_type_style(theme, comment_type.color);
     let border_style = match author {
@@ -373,9 +374,10 @@ pub fn format_comment_lines(
         None => styles::comment_border_style(theme, comment_type.color),
     };
 
+    let resolved_mark = if resolved { " ✓" } else { "" };
     let badge_text = match author {
-        Some(name) => format!("[{} @{name}] ", comment_type.label),
-        None => format!("[{}] ", comment_type.label),
+        Some(name) => format!("[{} @{name}{resolved_mark}] ", comment_type.label),
+        None => format!("[{}{resolved_mark}] ", comment_type.label),
     };
     let badge_width = badge_text.width();
 

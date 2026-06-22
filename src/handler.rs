@@ -1466,6 +1466,14 @@ fn handle_shared_normal_action(app: &mut App, action: Action) {
         Action::EditComment if app.cursor_on_locked_comment() => {
             app.set_message("Comment already pushed to GitHub — read only in tuicr");
         }
+        Action::ToggleCommentResolved if app.toggle_comment_resolved() => {}
+        Action::ToggleCommentResolved => {
+            if app.cursor_on_remote_thread() {
+                app.set_message("GitHub comment — read only in tuicr");
+            } else {
+                app.set_message("No comment at cursor");
+            }
+        }
         Action::EditComment if !app.enter_edit_mode() => {
             if app.cursor_on_remote_thread() {
                 app.set_message("GitHub comment — read only in tuicr");

@@ -239,6 +239,29 @@ pub enum ReviewCommand {
         content: Option<String>,
     },
 
+    /// Mark one or more comments as resolved in a persisted session.
+    Resolve {
+        /// Session slug from `tuicr review list` (local or PR), or path to a
+        /// session JSON file.
+        #[arg(long, value_name = "SESSION")]
+        session: String,
+
+        /// Repo selector used to resolve a local session slug (path or
+        /// `owner/repo`). PR slugs and JSON paths resolve without it.
+        #[arg(long, value_name = "PATH|OWNER/REPO", default_value = ".")]
+        repo: PathBuf,
+
+        /// One or more comment IDs to resolve. Repeat for multiple, e.g.
+        /// `--id abc --id def`. Mutually exclusive with --all.
+        #[arg(long = "id", value_name = "ID", conflicts_with = "all")]
+        comment_ids: Vec<String>,
+
+        /// Resolve all unresolved comments in the session. Mutually exclusive
+        /// with --id.
+        #[arg(long, conflicts_with = "comment_ids")]
+        all: bool,
+    },
+
     /// Print comments stored in a persisted session.
     #[command(alias = "get")]
     Comments {
@@ -933,6 +956,69 @@ mod tests {
                 repo: PathBuf::from("."),
             })
         );
+    }
+
+    #[test]
+    fn should_parse_review_resolve_by_ids() {
+        let parsed = parse_for_test(&[
+            "tuicr",
+            "review",
+            "resolve",
+            "--session",
+            "session",
+            "--id",
+            "abc",
+            "--id",
+            "def",
+        ])
+        .expect("parse should succeed");
+        assert_eq!(
+            parsed.review_command,
+            Some(ReviewCommand::Resolve {
+                session: "session".to_string(),
+                repo: PathBuf::from("."),
+                comment_ids: vec!["abc".to_string(), "def".to_string()],
+                all: false,
+            })
+        );
+    }
+
+    #[test]
+    fn should_parse_review_resolve_all() {
+        let parsed = parse_for_test(&[
+            "tuicr",
+            "review",
+            "resolve",
+            "--session",
+            "session",
+            "--all",
+        ])
+        .expect("parse should succeed");
+        assert_eq!(
+            parsed.review_command,
+            Some(ReviewCommand::Resolve {
+                session: "session".to_string(),
+                repo: PathBuf::from("."),
+                comment_ids: vec![],
+                all: true,
+            })
+        );
+    }
+
+    #[test]
+    fn should_error_when_resolve_has_both_id_and_all() {
+        let err = parse_for_test(&[
+            "tuicr",
+            "review",
+            "resolve",
+            "--session",
+            "session",
+            "--id",
+            "abc",
+            "--all",
+        ])
+        .expect_err("parse should fail");
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
     }
 
     #[test]
