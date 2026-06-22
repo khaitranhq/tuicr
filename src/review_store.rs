@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -83,6 +84,26 @@ impl ReviewStore {
         Ok(comment)
     }
 
+    /// Mark one or more comments as resolved in a persisted session and save.
+    pub fn resolve_comments(&self, session_ref: &SessionRef, comment_ids: &[String]) -> Result<()> {
+        let reviews_dir = self.reviews_dir()?;
+        let ids: HashSet<&str> = comment_ids.iter().map(|s| s.as_str()).collect();
+        storage::update_session_in_dir(session_ref.path(), &reviews_dir, |session| {
+            Ok(resolve_by_ids_in_session(session, &ids))
+        })?;
+        Ok(())
+    }
+
+    /// Resolve all unresolved comments in a session.
+    pub fn resolve_all_comments(&self, session_ref: &SessionRef) -> Result<usize> {
+        let reviews_dir = self.reviews_dir()?;
+        let (_session, count) =
+            storage::update_session_in_dir(session_ref.path(), &reviews_dir, |session| {
+                Ok(resolve_all_unresolved_in_session(session))
+            })?;
+        Ok(count)
+    }
+
     /// Save a session through this store's storage root.
     pub fn save_review(&self, session: &ReviewSession) -> Result<SessionRef> {
         let reviews_dir = self.reviews_dir()?;
@@ -95,6 +116,62 @@ impl ReviewStore {
             None => storage::get_reviews_dir(),
         }
     }
+}
+
+/// Resolve all comments whose IDs are in the given set. Single pass through all containers.
+fn resolve_by_ids_in_session(session: &mut ReviewSession, ids: &HashSet<&str>) -> usize {
+    let mut count = 0;
+    for comment in &mut session.review_comments {
+        if !comment.resolved && ids.contains(comment.id.as_str()) {
+            comment.resolved = true;
+            count += 1;
+        }
+    }
+    for file_review in session.files.values_mut() {
+        for comment in &mut file_review.file_comments {
+            if !comment.resolved && ids.contains(comment.id.as_str()) {
+                comment.resolved = true;
+                count += 1;
+            }
+        }
+        for comments in file_review.line_comments.values_mut() {
+            for comment in comments {
+                if !comment.resolved && ids.contains(comment.id.as_str()) {
+                    comment.resolved = true;
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+/// Resolve all unresolved comments. Single pass returning count.
+fn resolve_all_unresolved_in_session(session: &mut ReviewSession) -> usize {
+    let mut count = 0;
+    for comment in &mut session.review_comments {
+        if !comment.resolved {
+            comment.resolved = true;
+            count += 1;
+        }
+    }
+    for file_review in session.files.values_mut() {
+        for comment in &mut file_review.file_comments {
+            if !comment.resolved {
+                comment.resolved = true;
+                count += 1;
+            }
+        }
+        for comments in file_review.line_comments.values_mut() {
+            for comment in comments {
+                if !comment.resolved {
+                    comment.resolved = true;
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
 }
 
 /// Build a [`SessionSummary`] from a manifest entry, resolving its absolute
@@ -257,6 +334,37 @@ fn file_review_mut<'a>(
     })
 }
 
+/// Find a comment by ID across review-comments, file-comments, and
+/// line-comments, and set its `resolved` field to `true`.
+/// Returns `true` if a matching unresolved comment was found and marked.
+pub fn resolve_comment_in_session(session: &mut ReviewSession, id: &str) -> bool {
+    // review-level comments
+    for comment in &mut session.review_comments {
+        if comment.id == id && !comment.resolved {
+            comment.resolved = true;
+            return true;
+        }
+    }
+    // file-level and line-level comments
+    for file_review in session.files.values_mut() {
+        for comment in &mut file_review.file_comments {
+            if comment.id == id && !comment.resolved {
+                comment.resolved = true;
+                return true;
+            }
+        }
+        for comments in file_review.line_comments.values_mut() {
+            for comment in comments {
+                if comment.id == id && !comment.resolved {
+                    comment.resolved = true;
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,6 +442,181 @@ mod tests {
 
         let review = session.files.get(&PathBuf::from("src/main.rs")).unwrap();
         assert_eq!(review.line_comments.get(&12), Some(&vec![comment]));
+    }
+
+    #[test]
+    fn should_resolve_review_level_comment_by_id() {
+        let mut session = test_session(PathBuf::from("/repo"));
+        let comment = add_comment_to_session(
+            &mut session,
+            AddCommentRequest {
+                target: CommentTarget::Review,
+                content: "fix this".to_string(),
+                comment_type: CommentType::Issue,
+                author: crate::model::comment::DEFAULT_AUTHOR.to_string(),
+            },
+        )
+        .unwrap();
+        assert!(!comment.resolved);
+
+        let found = resolve_comment_in_session(&mut session, &comment.id);
+        assert!(found);
+        assert!(session.review_comments[0].resolved);
+    }
+
+    #[test]
+    fn should_resolve_file_comment_by_id() {
+        let mut session = test_session(PathBuf::from("/repo"));
+        let comment = add_comment_to_session(
+            &mut session,
+            AddCommentRequest {
+                target: CommentTarget::File {
+                    path: PathBuf::from("src/main.rs"),
+                },
+                content: "file note".to_string(),
+                comment_type: CommentType::Note,
+                author: crate::model::comment::DEFAULT_AUTHOR.to_string(),
+            },
+        )
+        .unwrap();
+
+        let found = resolve_comment_in_session(&mut session, &comment.id);
+        assert!(found);
+        let review = session.files.get(&PathBuf::from("src/main.rs")).unwrap();
+        assert!(review.file_comments[0].resolved);
+    }
+
+    #[test]
+    fn should_resolve_line_comment_by_id() {
+        let mut session = test_session(PathBuf::from("/repo"));
+        let comment = add_comment_to_session(
+            &mut session,
+            AddCommentRequest {
+                target: CommentTarget::Line {
+                    path: PathBuf::from("src/main.rs"),
+                    line: 10,
+                    side: LineSide::New,
+                },
+                content: "line note".to_string(),
+                comment_type: CommentType::Issue,
+                author: crate::model::comment::DEFAULT_AUTHOR.to_string(),
+            },
+        )
+        .unwrap();
+
+        let found = resolve_comment_in_session(&mut session, &comment.id);
+        assert!(found);
+        let review = session.files.get(&PathBuf::from("src/main.rs")).unwrap();
+        assert!(review.line_comments.get(&10).unwrap()[0].resolved);
+    }
+
+    #[test]
+    fn should_return_false_for_unknown_comment_id() {
+        let mut session = test_session(PathBuf::from("/repo"));
+        let found = resolve_comment_in_session(&mut session, "nonexistent");
+        assert!(!found);
+    }
+
+    #[test]
+    fn should_not_resolve_already_resolved_comment_again() {
+        let mut session = test_session(PathBuf::from("/repo"));
+        let comment = add_comment_to_session(
+            &mut session,
+            AddCommentRequest {
+                target: CommentTarget::Review,
+                content: "done".to_string(),
+                comment_type: CommentType::Note,
+                author: crate::model::comment::DEFAULT_AUTHOR.to_string(),
+            },
+        )
+        .unwrap();
+
+        assert!(resolve_comment_in_session(&mut session, &comment.id));
+        assert!(!resolve_comment_in_session(&mut session, &comment.id));
+    }
+
+    #[test]
+    fn should_resolve_all_comments_through_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let reviews_dir = temp.path().join("reviews");
+        let store = ReviewStore::with_reviews_dir(reviews_dir.clone());
+        let session = test_session(temp.path().join("repo"));
+        let session_ref = store.save_review(&session).unwrap();
+
+        // Add a few comments
+        store
+            .add_comment(
+                &session_ref,
+                AddCommentRequest {
+                    target: CommentTarget::Review,
+                    content: "review note".to_string(),
+                    comment_type: CommentType::Note,
+                    author: crate::model::comment::DEFAULT_AUTHOR.to_string(),
+                },
+            )
+            .unwrap();
+        store
+            .add_comment(
+                &session_ref,
+                AddCommentRequest {
+                    target: CommentTarget::Line {
+                        path: PathBuf::from("src/main.rs"),
+                        line: 7,
+                        side: LineSide::New,
+                    },
+                    content: "line note".to_string(),
+                    comment_type: CommentType::Issue,
+                    author: crate::model::comment::DEFAULT_AUTHOR.to_string(),
+                },
+            )
+            .unwrap();
+
+        let count = store.resolve_all_comments(&session_ref).unwrap();
+        assert_eq!(count, 2);
+
+        // Second resolve should be a no-op
+        let count = store.resolve_all_comments(&session_ref).unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn should_resolve_specific_comments_through_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let reviews_dir = temp.path().join("reviews");
+        let store = ReviewStore::with_reviews_dir(reviews_dir.clone());
+        let session = test_session(temp.path().join("repo"));
+        let session_ref = store.save_review(&session).unwrap();
+
+        let c1 = store
+            .add_comment(
+                &session_ref,
+                AddCommentRequest {
+                    target: CommentTarget::Review,
+                    content: "first".to_string(),
+                    comment_type: CommentType::Note,
+                    author: crate::model::comment::DEFAULT_AUTHOR.to_string(),
+                },
+            )
+            .unwrap();
+        let _c2 = store
+            .add_comment(
+                &session_ref,
+                AddCommentRequest {
+                    target: CommentTarget::Review,
+                    content: "second".to_string(),
+                    comment_type: CommentType::Note,
+                    author: crate::model::comment::DEFAULT_AUTHOR.to_string(),
+                },
+            )
+            .unwrap();
+
+        store
+            .resolve_comments(&session_ref, &[c1.id.clone()])
+            .unwrap();
+
+        let loaded = store.get_review(&session_ref).unwrap();
+        assert!(loaded.review_comments[0].resolved);
+        assert!(!loaded.review_comments[1].resolved);
     }
 
     #[test]

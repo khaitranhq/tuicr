@@ -172,6 +172,10 @@ pub struct Comment {
     /// inline comments; review-level / summary comments don't get one.
     #[serde(default)]
     pub remote_comment_id: Option<String>,
+    /// Whether this comment has been resolved (acknowledged/addressed) by the
+    /// user. Independent of forge lifecycle state; purely a local marker.
+    #[serde(default)]
+    pub resolved: bool,
 }
 
 impl Comment {
@@ -188,6 +192,7 @@ impl Comment {
             lifecycle_state: CommentLifecycleState::default(),
             remote_review_id: None,
             remote_comment_id: None,
+            resolved: false,
         }
     }
 
@@ -210,6 +215,7 @@ impl Comment {
             lifecycle_state: CommentLifecycleState::default(),
             remote_review_id: None,
             remote_comment_id: None,
+            resolved: false,
         }
     }
 
@@ -456,6 +462,21 @@ mod tests {
             assert_eq!(restored.lifecycle_state, CommentLifecycleState::Submitted);
             assert_eq!(restored.remote_review_id.as_deref(), Some("R_kgDOEx"));
             assert_eq!(restored.remote_comment_id.as_deref(), Some("RC_kgDOEx"));
+        }
+
+        #[test]
+        fn should_default_resolved_to_false_for_new_comment() {
+            let comment = Comment::new("hi".to_string(), CommentType::Note, None);
+            assert!(!comment.resolved);
+        }
+
+        #[test]
+        fn should_roundtrip_resolved_via_serde() {
+            let mut original = Comment::new("body".to_string(), CommentType::Note, None);
+            original.resolved = true;
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: Comment = serde_json::from_str(&json).unwrap();
+            assert!(restored.resolved);
         }
 
         #[test]

@@ -50,6 +50,12 @@ fn run_with_writer(command: ReviewCommand, out: &mut impl Write) -> Result<()> {
             },
             out,
         ),
+        ReviewCommand::Resolve {
+            session,
+            repo,
+            comment_ids,
+            all,
+        } => resolve_comments(&session, &repo, &comment_ids, all, out),
         ReviewCommand::Comments { session, repo } => show_comments(&session, &repo, out),
     }
 }
@@ -334,6 +340,29 @@ fn show_comments(session: &str, repo: &Path, out: &mut impl Write) -> Result<()>
     Ok(())
 }
 
+fn resolve_comments(
+    session: &str,
+    repo: &Path,
+    comment_ids: &[String],
+    all: bool,
+    out: &mut impl Write,
+) -> Result<()> {
+    let store = ReviewStore::new();
+    let session_ref = resolve_session_ref(&store, repo, session)?;
+
+    let count = if all {
+        store.resolve_all_comments(&session_ref)?
+    } else {
+        store.resolve_comments(&session_ref, comment_ids)?;
+        comment_ids.len()
+    };
+
+    let output = serde_json::json!({"resolved": count});
+    serde_json::to_writer_pretty(&mut *out, &output)?;
+    writeln!(out)?;
+    Ok(())
+}
+
 fn resolve_session_ref(store: &ReviewStore, repo: &Path, session: &str) -> Result<SessionRef> {
     let direct_path = PathBuf::from(session);
     if direct_path.exists() || direct_path.is_absolute() || session.ends_with(".json") {
@@ -550,6 +579,7 @@ struct CommentOutput {
     side: Option<&'static str>,
     comment_type: String,
     lifecycle_state: &'static str,
+    resolved: bool,
     created_at: String,
     content: String,
 }
@@ -599,6 +629,7 @@ impl CommentOutput {
             side: side_id(side),
             comment_type: comment.comment_type.id().to_string(),
             lifecycle_state: lifecycle_id(comment.lifecycle_state),
+            resolved: comment.resolved,
             created_at: comment.created_at.to_rfc3339(),
             content: comment.content.clone(),
         }
@@ -863,5 +894,79 @@ mod tests {
         assert_eq!(value[0]["comment_type"], "issue");
         assert_eq!(value[0]["location"], "src/main.rs:42");
         assert_eq!(value[0]["content"], "check this");
+    }
+
+    #[test]
+    fn should_resolve_comment_and_output_count() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let reviews = temp.path().join("reviews");
+        let store = ReviewStore::with_reviews_dir(&reviews);
+        let session = test_session(repo.clone());
+        let session_ref = store.save_review(&session).unwrap();
+        let session_path = session_ref.path().display().to_string();
+
+        let comment = store
+            .add_comment(
+                &session_ref,
+                AddCommentRequest {
+                    target: CommentTarget::Review,
+                    content: "resolve me".to_string(),
+                    comment_type: CommentType::Issue,
+                    author: crate::model::comment::DEFAULT_AUTHOR.to_string(),
+                },
+            )
+            .unwrap();
+
+        // resolve by id — pass session file path directly
+        let mut out = Vec::new();
+        resolve_comments(&session_path, &repo, &[comment.id.clone()], false, &mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["resolved"], 1);
+    }
+
+    #[test]
+    fn should_resolve_all_comments_in_cli() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let reviews = temp.path().join("reviews");
+        let store = ReviewStore::with_reviews_dir(&reviews);
+        let session = test_session(repo.clone());
+        let session_ref = store.save_review(&session).unwrap();
+        let session_path = session_ref.path().display().to_string();
+
+        store
+            .add_comment(
+                &session_ref,
+                AddCommentRequest {
+                    target: CommentTarget::Review,
+                    content: "c1".to_string(),
+                    comment_type: CommentType::Note,
+                    author: crate::model::comment::DEFAULT_AUTHOR.to_string(),
+                },
+            )
+            .unwrap();
+        store
+            .add_comment(
+                &session_ref,
+                AddCommentRequest {
+                    target: CommentTarget::File {
+                        path: PathBuf::from("src/main.rs"),
+                    },
+                    content: "c2".to_string(),
+                    comment_type: CommentType::Note,
+                    author: crate::model::comment::DEFAULT_AUTHOR.to_string(),
+                },
+            )
+            .unwrap();
+
+        let mut out = Vec::new();
+        resolve_comments(&session_path, &repo, &[], true, &mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["resolved"], 2);
     }
 }

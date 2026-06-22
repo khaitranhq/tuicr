@@ -175,6 +175,26 @@ For structured input, use `--input` with literal JSON, `@path/to/file.json`, or
 `-` for stdin. Supported target types are `review`, `file`, `line`, and
 `line_range`.
 
+## Resolve Comments
+
+In the TUI, press `x` on a comment to toggle its resolved status.
+
+Via the CLI, mark comments as resolved after addressing them. Supports both
+individual and batch resolve:
+
+Mark comments as resolved after addressing them. Supports both individual and
+batch resolve:
+
+```bash
+# Resolve specific comments by ID
+$ tuicr review resolve --repo /path/to/repo --session <slug> --id <comment-id-1> --id <comment-id-2>
+
+# Resolve all unresolved comments
+$ tuicr review resolve --repo /path/to/repo --session <slug> --all
+```
+
+Output is JSON: `{"resolved": N}`.
+
 ## Legacy Export Output
 
 Older wrapper-driven flows may emit:

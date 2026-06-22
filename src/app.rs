@@ -1294,6 +1294,8 @@ pub struct CommentNavigatorItem {
     /// or the root comment's author for remote threads. `None` only when the
     /// forge did not attach an author (e.g. deleted user).
     pub author: Option<String>,
+    /// Whether the local comment is resolved.
+    pub resolved: bool,
 }
 
 #[derive(Debug)]
@@ -5192,6 +5194,7 @@ impl App {
                     line: None,
                     side: None,
                     author: Some(comment.author.clone()),
+                    resolved: comment.resolved,
                 })
             }
             CommentNavigatorKey::File {
@@ -5212,6 +5215,7 @@ impl App {
                     line: None,
                     side: None,
                     author: Some(comment.author.clone()),
+                    resolved: comment.resolved,
                 })
             }
             CommentNavigatorKey::Line {
@@ -5237,6 +5241,7 @@ impl App {
                     line: Some(line),
                     side: Some(side),
                     author: Some(comment.author.clone()),
+                    resolved: comment.resolved,
                 })
             }
             CommentNavigatorKey::Remote { thread_idx } => {
@@ -5258,6 +5263,7 @@ impl App {
                     line: thread.line,
                     side: Some(side),
                     author,
+                    resolved: thread.is_resolved,
                 })
             }
             CommentNavigatorKey::RemoteReview { summary_idx } => {
@@ -5270,6 +5276,7 @@ impl App {
                     line: None,
                     side: None,
                     author: summary.author.clone(),
+                    resolved: false,
                 })
             }
         }
@@ -6464,6 +6471,51 @@ impl App {
         }
 
         false
+    }
+
+    /// Toggle resolved status on the comment at the current cursor position.
+    /// Returns true if a comment was toggled.
+    pub fn toggle_comment_resolved(&mut self) -> bool {
+        let location = match self.find_comment_at_cursor() {
+            Some(loc) => loc,
+            None => return false,
+        };
+
+        let comment = match location {
+            CommentLocation::Review { index } => self.session.review_comments.get_mut(index),
+            CommentLocation::File { path, index } => self
+                .session
+                .files
+                .get_mut(&path)
+                .and_then(|r| r.file_comments.get_mut(index)),
+            CommentLocation::Line {
+                path,
+                line,
+                side,
+                index,
+            } => self
+                .session
+                .files
+                .get_mut(&path)
+                .and_then(|r| r.line_comments.get_mut(&line))
+                .and_then(|comments| {
+                    comments
+                        .iter_mut()
+                        .filter(|c| c.side.unwrap_or(LineSide::New) == side)
+                        .nth(index)
+                }),
+        };
+
+        match comment {
+            Some(c) => {
+                c.resolved = !c.resolved;
+                self.dirty = true;
+                let status = if c.resolved { "resolved" } else { "unresolved" };
+                self.set_message(format!("Comment {status}"));
+                true
+            }
+            None => false,
+        }
     }
 
     pub fn clear_comments(&mut self, scope: ClearScope) {

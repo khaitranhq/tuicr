@@ -913,7 +913,10 @@ mod tests {
         let loaded = load_session(&path).unwrap();
 
         let file = loaded.files.get(&path_buf).expect("file should exist");
-        assert!(file.reviewed, "reviewed status must survive save/load roundtrip");
+        assert!(
+            file.reviewed,
+            "reviewed status must survive save/load roundtrip"
+        );
     }
 
     #[test]
@@ -929,13 +932,20 @@ mod tests {
         );
         let path_buf = PathBuf::from("src/main.rs");
         let key = "@@ -1,1 +1,1 @@".to_string();
-        session.get_file_mut(&path_buf).unwrap().reviewed_hunks.insert(key.clone());
+        session
+            .get_file_mut(&path_buf)
+            .unwrap()
+            .reviewed_hunks
+            .insert(key.clone());
 
         let path = save_session(&session).unwrap();
         let loaded = load_session(&path).unwrap();
 
         let file = loaded.files.get(&path_buf).expect("file should exist");
-        assert!(file.reviewed_hunks.contains(&key), "reviewed hunk status must survive save/load roundtrip");
+        assert!(
+            file.reviewed_hunks.contains(&key),
+            "reviewed hunk status must survive save/load roundtrip"
+        );
     }
 
     #[test]
@@ -960,8 +970,10 @@ mod tests {
         let mut loaded = load_session(&path).unwrap();
         loaded.add_file(path_buf.clone(), FileStatus::Modified, 42);
 
-        assert!(loaded.is_file_reviewed(&path_buf),
-            "reviewed must survive add_file when content hash matches");
+        assert!(
+            loaded.is_file_reviewed(&path_buf),
+            "reviewed must survive add_file when content hash matches"
+        );
     }
 
     #[test]

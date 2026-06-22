@@ -87,7 +87,16 @@ fn render_comment_row(app: &App, item: &CommentNavigatorItem) -> Line<'static> {
         .as_deref()
         .and_then(|author| styles::author_accent(&app.username, author));
 
+    let resolve_indicator = if item.resolved {
+        Some(Span::styled("✓ ", styles::reviewed_style(&app.theme)))
+    } else {
+        None
+    };
+
     let mut spans = vec![Span::styled(marker, marker_style), Span::raw(" ")];
+    if let Some(ri) = resolve_indicator {
+        spans.push(ri);
+    }
     if let Some(color) = author_accent {
         spans.push(Span::styled(
             "● ".to_string(),
