@@ -4156,6 +4156,7 @@ impl App {
                 }
                 let verb = if was_staged { "Unstaged" } else { "Staged" };
                 self.set_message(format!("{verb}: {}", path_for_msg.display()));
+                self.rebuild_annotations();
             }
             Err(e) => self.set_error(format!("Failed to stage/unstage: {e}")),
         }
@@ -4367,7 +4368,7 @@ impl App {
             self.ensure_cursor_visible();
             // Cap scroll change to cursor movement to prevent multi-line jumps
             // when the view is catching up from a non-steady-state position.
-            let cursor_moved = self.diff_state.cursor_line - prev_cursor;
+            let cursor_moved = self.diff_state.cursor_line.saturating_sub(prev_cursor);
             if self.diff_state.scroll_offset > prev_scroll + cursor_moved {
                 self.diff_state.scroll_offset = prev_scroll + cursor_moved;
             }
@@ -15386,10 +15387,12 @@ mod single_file_view_tests {
         assert!(session_path.exists());
 
         // Load back from disk
-        let loaded = crate::persistence::storage::load_session(&session_path)
-            .expect("load session");
-        assert!(loaded.is_file_reviewed(&pb),
-            "reviewed status must survive app save + disk load");
+        let loaded =
+            crate::persistence::storage::load_session(&session_path).expect("load session");
+        assert!(
+            loaded.is_file_reviewed(&pb),
+            "reviewed status must survive app save + disk load"
+        );
     }
 
     #[test]
@@ -15399,10 +15402,7 @@ mod single_file_view_tests {
         fs::create_dir_all(&repo_path).expect("create repo dir");
 
         let file_path = "src/main.rs";
-        let mut app = app_with_root(
-            repo_path,
-            vec![file(file_path, vec![hunk(1, 3)])],
-        );
+        let mut app = app_with_root(repo_path, vec![file(file_path, vec![hunk(1, 3)])]);
 
         // Navigate cursor to hunk header then toggle
         app.diff_state.cursor_line = app.hunk_header_line(0, 0).expect("missing hunk header");
@@ -15417,9 +15417,11 @@ mod single_file_view_tests {
         assert!(session_path.exists());
 
         // Load back from disk
-        let loaded = crate::persistence::storage::load_session(&session_path)
-            .expect("load session");
-        assert!(loaded.is_hunk_reviewed(&pb, &key),
-            "hunk reviewed status must survive app save + disk load");
+        let loaded =
+            crate::persistence::storage::load_session(&session_path).expect("load session");
+        assert!(
+            loaded.is_hunk_reviewed(&pb, &key),
+            "hunk reviewed status must survive app save + disk load"
+        );
     }
 }
